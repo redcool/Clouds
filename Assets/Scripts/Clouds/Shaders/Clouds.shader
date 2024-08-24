@@ -42,6 +42,10 @@ Shader "Hidden/Clouds"
                 // (https://docs.unity3d.com/ScriptReference/Camera-cameraToWorldMatrix.html)
                 float3 viewVector = mul(unity_CameraInvProjection, float4(v.uv * 2 - 1, 0, -1));
                 output.viewVector = mul(unity_CameraToWorld, float4(viewVector,0));
+                
+                // float3 viewDir = mul(unity_CameraInvProjection,float4(v.uv.xy*2-1,0,-1));
+                // output.viewVector = mul(unity_CameraToWorld,float4(viewDir,0));
+
                 return output;
             }
 
@@ -102,6 +106,9 @@ Shader "Hidden/Clouds"
             float4 debugChannelWeight;
             float debugTileAmount;
             float viewerSize;
+
+            //-----
+            float3 _WindDir;
             
             float remap(float v, float minOld, float maxOld, float minNew, float maxNew) {
                 return minNew + (v-minOld) * (maxNew - minNew) / (maxOld-minOld);
@@ -162,7 +169,7 @@ Shader "Hidden/Clouds"
                 return (v-low)/(high-low);
             }
 
-            float sampleDensity(float3 rayPos) {
+            float sampleDensity1(float3 rayPos) {
                 // Constants:
                 const int mipLevel = 0;
                 const float baseScale = 1/1000.0;
@@ -194,7 +201,7 @@ Shader "Hidden/Clouds"
                 float4 shapeNoise = NoiseTex.SampleLevel(samplerNoiseTex, shapeSamplePos, mipLevel);
                 float4 normalizedShapeWeights = shapeNoiseWeights / dot(shapeNoiseWeights, 1);
                 float shapeFBM = dot(shapeNoise, normalizedShapeWeights) * heightGradient;
-                float baseShapeDensity = shapeFBM + densityOffset * .1;
+                float baseShapeDensity = shapeFBM + densityOffset;
 
                 // Save sampling from detail tex if shape density <= 0
                 if (baseShapeDensity > 0) {
@@ -209,11 +216,60 @@ Shader "Hidden/Clouds"
                     float detailErodeWeight = oneMinusShape * oneMinusShape * oneMinusShape;
                     float cloudDensity = baseShapeDensity - (1-detailFBM) * detailErodeWeight * detailNoiseWeight;
     
-                    return cloudDensity * densityMultiplier * 0.1;
+                    return cloudDensity * densityMultiplier;
                 }
-                return 0;
+                return baseShapeDensity;
             }
 
+            float sampleDensity(float3 rayPos) {
+
+                // Calculate texture sample positions
+                float time = _Time.x * timeScale;
+                float3 size = boundsMax - boundsMin;
+                float3 boundsCentre = (boundsMin+boundsMax) * .5;
+                float3 shapeSamplePos = (rayPos * 0.001 + _WindDir *_Time.y) * scale;
+
+                // Calculate falloff at along x/z edges of the cloud container
+                const float containerEdgeFadeDst = 50;
+                float3 dstEdge = min(containerEdgeFadeDst,min(rayPos - boundsMin,boundsMax - rayPos));
+                float edgeWeight = min(dstEdge.x,min(dstEdge.y,dstEdge.z))/containerEdgeFadeDst;
+                
+                // Calculate height gradient from weather map
+                //float2 weatherUV = (size.xz * .5 + (rayPos.xz-boundsCentre.xz)) / max(size.x,size.z);
+                //float weatherMap = WeatherMap.SampleLevel(samplerWeatherMap, weatherUV, mipLevel).x;
+
+                float heightPercent = (rayPos.y - boundsMin.y) / size.y;
+                float gMin = .2;
+                float gMax = .7;
+                float heightGradient = saturate(remap(heightPercent, 0.0, gMin, 0, 1)) * saturate(remap(heightPercent, 1, gMax, 0, 1));
+                heightGradient *= edgeWeight;
+
+                // float heightGradient = edgeWeight * ((1-abs(heightPercent-0.5)));
+
+                // Calculate base shape density
+                float4 shapeNoise = NoiseTex.SampleLevel(samplerNoiseTex, shapeSamplePos, 0);
+                float4 normalizedShapeWeights = shapeNoiseWeights / dot(shapeNoiseWeights, 1);
+                float shapeFBM = dot(shapeNoise, normalizedShapeWeights) * heightGradient;
+                float baseShapeDensity = shapeFBM + densityOffset;
+
+                // Save sampling from detail tex if shape density <= 0
+                if (baseShapeDensity > 0) {
+                    // Sample detail noise
+                    float3 detailSamplePos = rayPos*0.001 * detailNoiseScale + _WindDir * _Time.y * detailSpeed;
+
+                    float4 detailNoise = DetailNoiseTex.SampleLevel(samplerDetailNoiseTex, detailSamplePos, 0);
+                    float3 normalizedDetailWeights = detailWeights / dot(detailWeights, 1);
+                    float detailFBM = dot(detailNoise, normalizedDetailWeights);
+
+                    // Subtract detail noise from base shape (weighted by inverse density so that edges get eroded more than centre)
+                    float oneMinusShape = 1 - shapeFBM;
+                    float detailErodeWeight = oneMinusShape * oneMinusShape * oneMinusShape;
+                    float cloudDensity = baseShapeDensity - (1-detailFBM) * detailErodeWeight * detailNoiseWeight;
+    
+                    return cloudDensity * densityMultiplier;
+                }
+                return baseShapeDensity;
+            }
             // Calculate proportion of light that reaches the given point from the lightsource
             float lightmarch(float3 position) {
                 float3 dirToLight = _WorldSpaceLightPos0.xyz;
@@ -281,7 +337,7 @@ Shader "Hidden/Clouds"
                 float3 rayPos = _WorldSpaceCameraPos;
                 float viewLength = length(i.viewVector);
                 float3 rayDir = i.viewVector / viewLength;
-                
+                return rayDir.xyzx;
                 // Depth and cloud container intersection info:
                 float nonlin_depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, i.uv);
                 float depth = LinearEyeDepth(nonlin_depth) * viewLength;
@@ -302,9 +358,6 @@ Shader "Hidden/Clouds"
 
                 float dstTravelled = randomOffset;
                 float dstLimit = min(depth-dstToBox, dstInsideBox);
-                
-                
-                
                 const float stepSize = 11;
 
                 // March through volume:

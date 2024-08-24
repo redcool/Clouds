@@ -53,6 +53,9 @@ public class CloudMaster : MonoBehaviour {
     public Color colA;
     public Color colB;
 
+    [Header("...")]
+    public Vector3 _WindDir = new Vector3(1,0,0);
+
     // Internal
     [HideInInspector]
     public Material material;
@@ -126,6 +129,8 @@ public class CloudMaster : MonoBehaviour {
 
         material.SetColor ("colA", colA);
         material.SetColor ("colB", colB);
+
+        material.SetVector("_WindDir", _WindDir);
 
         // Bit does the following:
         // - sets _MainTex property on material to the source texture
