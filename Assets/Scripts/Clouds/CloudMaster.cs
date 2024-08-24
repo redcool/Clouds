@@ -60,6 +60,10 @@ public class CloudMaster : MonoBehaviour {
     [HideInInspector]
     public Material material;
 
+    [Header("===")]
+    public bool isUseBoxClouds;
+    public Material mat;
+
     void Awake () {
         var weatherMapGen = FindObjectOfType<WeatherMap> ();
         if (Application.isPlaying) {
@@ -68,76 +72,94 @@ public class CloudMaster : MonoBehaviour {
     }
 
     [ImageEffectOpaque]
-    private void OnRenderImage (RenderTexture src, RenderTexture dest) {
-
-        // Validate inputs
-        if (material == null || material.shader != shader) {
-            material = new Material (shader);
-        }
-        numStepsLight = Mathf.Max (1, numStepsLight);
-
-        // Noise
-        var noise = FindObjectOfType<NoiseGenerator> ();
-        noise.UpdateNoise ();
-
-        material.SetTexture ("NoiseTex", noise.shapeTexture);
-        material.SetTexture ("DetailNoiseTex", noise.detailTexture);
-        material.SetTexture ("BlueNoise", blueNoise);
-
-        // Weathermap
-        var weatherMapGen = FindObjectOfType<WeatherMap> ();
-        if (!Application.isPlaying) {
-            weatherMapGen.UpdateMap ();
-        }
-        material.SetTexture ("WeatherMap", weatherMapGen.weatherMap);
-
-        Vector3 size = container.localScale;
-        int width = Mathf.CeilToInt (size.x);
-        int height = Mathf.CeilToInt (size.y);
-        int depth = Mathf.CeilToInt (size.z);
-
-        material.SetFloat ("scale", cloudScale);
-        material.SetFloat ("densityMultiplier", densityMultiplier);
-        material.SetFloat ("densityOffset", densityOffset);
-        material.SetFloat ("lightAbsorptionThroughCloud", lightAbsorptionThroughCloud);
-        material.SetFloat ("lightAbsorptionTowardSun", lightAbsorptionTowardSun);
-        material.SetFloat ("darknessThreshold", darknessThreshold);
-        material.SetVector ("params", cloudTestParams);
-        material.SetFloat ("rayOffsetStrength", rayOffsetStrength);
-
-        material.SetFloat ("detailNoiseScale", detailNoiseScale);
-        material.SetFloat ("detailNoiseWeight", detailNoiseWeight);
-        material.SetVector ("shapeOffset", shapeOffset);
-        material.SetVector ("detailOffset", detailOffset);
-        material.SetVector ("detailWeights", detailNoiseWeights);
-        material.SetVector ("shapeNoiseWeights", shapeNoiseWeights);
-        material.SetVector ("phaseParams", new Vector4 (forwardScattering, backScattering, baseBrightness, phaseFactor));
-
-        material.SetVector ("boundsMin", container.position - container.localScale / 2);
-        material.SetVector ("boundsMax", container.position + container.localScale / 2);
-
-        material.SetInt ("numStepsLight", numStepsLight);
-
-        material.SetVector ("mapSize", new Vector4 (width, height, depth, 0));
-
-        material.SetFloat ("timeScale", (Application.isPlaying) ? timeScale : 0);
-        material.SetFloat ("baseSpeed", baseSpeed);
-        material.SetFloat ("detailSpeed", detailSpeed);
-
-        // Set debug params
-        SetDebugParams ();
-
-        material.SetColor ("colA", colA);
-        material.SetColor ("colB", colB);
-
-        material.SetVector("_WindDir", _WindDir);
+    private void OnRenderImage(RenderTexture src, RenderTexture dest)
+    {
 
         // Bit does the following:
         // - sets _MainTex property on material to the source texture
         // - sets the render target to the destination texture
         // - draws a full-screen quad
         // This copies the src texture to the dest texture, with whatever modifications the shader makes
-        Graphics.Blit (src, dest, material);
+
+        if (!isUseBoxClouds)
+            Graphics.Blit(src, dest, material);
+        else
+            Graphics.Blit(src, dest);
+    }
+
+    private void Update()
+    {
+        // Validate inputs
+        if (material == null || material.shader != shader)
+        {
+            material = new Material(shader);
+        }
+        UpdateMat(material);
+        if (mat)
+            UpdateMat(mat);
+    }
+
+    private void UpdateMat(Material material)
+    {
+
+        numStepsLight = Mathf.Max(1, numStepsLight);
+
+        // Noise
+        var noise = FindObjectOfType<NoiseGenerator>();
+        noise.UpdateNoise();
+
+        material.SetTexture("NoiseTex", noise.shapeTexture);
+        material.SetTexture("DetailNoiseTex", noise.detailTexture);
+        material.SetTexture("BlueNoise", blueNoise);
+
+        // Weathermap
+        var weatherMapGen = FindObjectOfType<WeatherMap>();
+        if (!Application.isPlaying)
+        {
+            weatherMapGen.UpdateMap();
+        }
+        material.SetTexture("WeatherMap", weatherMapGen.weatherMap);
+
+        Vector3 size = container.localScale;
+        int width = Mathf.CeilToInt(size.x);
+        int height = Mathf.CeilToInt(size.y);
+        int depth = Mathf.CeilToInt(size.z);
+
+        material.SetFloat("scale", cloudScale);
+        material.SetFloat("densityMultiplier", densityMultiplier);
+        material.SetFloat("densityOffset", densityOffset);
+        material.SetFloat("lightAbsorptionThroughCloud", lightAbsorptionThroughCloud);
+        material.SetFloat("lightAbsorptionTowardSun", lightAbsorptionTowardSun);
+        material.SetFloat("darknessThreshold", darknessThreshold);
+        material.SetVector("params", cloudTestParams);
+        material.SetFloat("rayOffsetStrength", rayOffsetStrength);
+
+        material.SetFloat("detailNoiseScale", detailNoiseScale);
+        material.SetFloat("detailNoiseWeight", detailNoiseWeight);
+        material.SetVector("shapeOffset", shapeOffset);
+        material.SetVector("detailOffset", detailOffset);
+        material.SetVector("detailWeights", detailNoiseWeights);
+        material.SetVector("shapeNoiseWeights", shapeNoiseWeights);
+        material.SetVector("phaseParams", new Vector4(forwardScattering, backScattering, baseBrightness, phaseFactor));
+
+        material.SetVector("boundsMin", container.position - container.localScale / 2);
+        material.SetVector("boundsMax", container.position + container.localScale / 2);
+
+        material.SetInt("numStepsLight", numStepsLight);
+
+        material.SetVector("mapSize", new Vector4(width, height, depth, 0));
+
+        material.SetFloat("timeScale", (Application.isPlaying) ? timeScale : 0);
+        material.SetFloat("baseSpeed", baseSpeed);
+        material.SetFloat("detailSpeed", detailSpeed);
+
+        // Set debug params
+        SetDebugParams();
+
+        material.SetColor("colA", colA);
+        material.SetColor("colB", colB);
+
+        material.SetVector("_WindDir", _WindDir);
     }
 
     void SetDebugParams () {

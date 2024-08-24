@@ -1,19 +1,21 @@
 
-Shader "Hidden/Clouds"
+Shader "Nature/BoxClouds"
 {
     
     Properties
     {
-        _MainTex ("Texture", 2D) = "white" {}
+        
     }
     SubShader
     {
         
         // No culling or depth
         Cull Off ZWrite Off ZTest Always
+        blend srcAlpha oneMinusSrcAlpha
 
         Pass
         {
+
             CGPROGRAM
 
             #pragma vertex vert
@@ -36,11 +38,16 @@ Shader "Hidden/Clouds"
             
             v2f vert (appdata v) {
                 v2f output;
-                output.pos = UnityObjectToClipPos(v.vertex);
+                // output.pos = UnityObjectToClipPos(v.vertex);
+                output.pos = float4(v.vertex.xy*2,0.1,1);
                 output.uv = v.uv;
                 // Camera space matches OpenGL convention where cam forward is -z. In unity forward is positive z.
                 // (https://docs.unity3d.com/ScriptReference/Camera-cameraToWorldMatrix.html)
-                float3 viewVector = mul(unity_CameraInvProjection, float4(v.uv * 2 - 1, 0, -1));
+                float2 dirScale = float2(1,1);
+                #if defined(UNITY_UV_STARTS_AT_TOP)
+                    dirScale.y =-1;
+                #endif
+                float3 viewVector = mul(unity_CameraInvProjection, float4(output.pos.xy*dirScale, 0, -1));
                 output.viewVector = mul(unity_CameraToWorld, float4(viewVector,0));
                 
                 // float3 viewDir = mul(unity_CameraInvProjection,float4(v.uv.xy*2-1,0,-1));
@@ -384,6 +391,9 @@ Shader "Hidden/Clouds"
                 // Add clouds to background
                 float3 backgroundCol = tex2D(_MainTex,i.uv);
                 float3 cloudCol = lightEnergy * _LightColor0;
+                // use alpha blend
+                return float4(cloudCol,1-transmittance);
+
                 float3 col = backgroundCol * transmittance + cloudCol;
                 return float4(col,0);
 
