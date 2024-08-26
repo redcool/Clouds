@@ -4,7 +4,6 @@ Shader "Nature/BoxClouds"
     
     Properties
     {
-        
     }
     SubShader
     {
@@ -22,8 +21,7 @@ Shader "Nature/BoxClouds"
             #pragma fragment frag
 
             #include "UnityCG.cginc"
-            #include "Assets/Scripts/Clouds/Shaders/CloudDebug.cginc"
-
+#include "CloudLib.hlsl"
             // vertex input: position, UV
             struct appdata {
                 float4 vertex : POSITION;
@@ -38,9 +36,16 @@ Shader "Nature/BoxClouds"
             
             v2f vert (appdata v) {
                 v2f output;
-                // output.pos = UnityObjectToClipPos(v.vertex);
-                output.pos = float4(v.vertex.xy*2,0.1,1);
                 output.uv = v.uv;
+
+                #if !defined(FULL_SCREEN)
+                output.pos = UnityObjectToClipPos(v.vertex);
+                float3 hitPos = mul(unity_ObjectToWorld,float4(v.vertex) );
+                output.viewVector = hitPos - _WorldSpaceCameraPos;
+                #endif
+
+                #if defined(FULL_SCREEN)
+                output.pos = float4(v.vertex.xy*2,0,1);
                 // Camera space matches OpenGL convention where cam forward is -z. In unity forward is positive z.
                 // (https://docs.unity3d.com/ScriptReference/Camera-cameraToWorldMatrix.html)
                 float2 dirScale = float2(1,1);
@@ -49,24 +54,17 @@ Shader "Nature/BoxClouds"
                 #endif
                 float3 viewVector = mul(unity_CameraInvProjection, float4(output.pos.xy*dirScale, 0, -1));
                 output.viewVector = mul(unity_CameraToWorld, float4(viewVector,0));
-                
-                // float3 viewDir = mul(unity_CameraInvProjection,float4(v.uv.xy*2-1,0,-1));
-                // output.viewVector = mul(unity_CameraToWorld,float4(viewDir,0));
+                #endif
 
                 return output;
             }
 
             // Textures
-            Texture3D<float4> NoiseTex;
-            Texture3D<float4> DetailNoiseTex;
-            Texture2D<float4> WeatherMap;
-            Texture2D<float4> BlueNoise;
+            sampler3D NoiseTex;
+            sampler3D DetailNoiseTex;
+            sampler2D WeatherMap;
+            sampler2D BlueNoise;
             
-            SamplerState samplerNoiseTex;
-            SamplerState samplerDetailNoiseTex;
-            SamplerState samplerWeatherMap;
-            SamplerState samplerBlueNoise;
-
             sampler2D _MainTex;
             sampler2D _CameraDepthTexture;
 
@@ -117,64 +115,7 @@ Shader "Nature/BoxClouds"
             //-----
             float3 _WindDir;
             
-            float remap(float v, float minOld, float maxOld, float minNew, float maxNew) {
-                return minNew + (v-minOld) * (maxNew - minNew) / (maxOld-minOld);
-            }
 
-            float2 squareUV(float2 uv) {
-                float width = _ScreenParams.x;
-                float height =_ScreenParams.y;
-                //float minDim = min(width, height);
-                float scale = 1000;
-                float x = uv.x * width;
-                float y = uv.y * height;
-                return float2 (x/scale, y/scale);
-            }
-
-            // Returns (dstToBox, dstInsideBox). If ray misses box, dstInsideBox will be zero
-            float2 rayBoxDst(float3 boundsMin, float3 boundsMax, float3 rayOrigin, float3 invRaydir) {
-                // Adapted from: http://jcgt.org/published/0007/03/04/
-                float3 t0 = (boundsMin - rayOrigin) * invRaydir;
-                float3 t1 = (boundsMax - rayOrigin) * invRaydir;
-                float3 tmin = min(t0, t1);
-                float3 tmax = max(t0, t1);
-                
-                float dstA = max(max(tmin.x, tmin.y), tmin.z);
-                float dstB = min(tmax.x, min(tmax.y, tmax.z));
-
-                // CASE 1: ray intersects box from outside (0 <= dstA <= dstB)
-                // dstA is dst to nearest intersection, dstB dst to far intersection
-
-                // CASE 2: ray intersects box from inside (dstA < 0 < dstB)
-                // dstA is the dst to intersection behind the ray, dstB is dst to forward intersection
-
-                // CASE 3: ray misses box (dstA > dstB)
-
-                float dstToBox = max(0, dstA);
-                float dstInsideBox = max(0, dstB - dstToBox);
-                return float2(dstToBox, dstInsideBox);
-            }
-
-            // Henyey-Greenstein
-            float hg(float a, float g) {
-                float g2 = g*g;
-                return (1-g2) / (4*3.1415*pow(1+g2-2*g*(a), 1.5));
-            }
-
-            float phase(float a) {
-                float blend = .5;
-                float hgBlend = hg(a,phaseParams.x) * (1-blend) + hg(a,-phaseParams.y) * blend;
-                return phaseParams.z + hgBlend*phaseParams.w;
-            }
-
-            float beer(float d) {
-                float beer = exp(-d);
-                return beer;
-            }
-
-            float remap01(float v, float low, float high) {
-                return (v-low)/(high-low);
-            }
 
             float sampleDensity1(float3 rayPos) {
                 // Constants:
@@ -205,7 +146,7 @@ Shader "Nature/BoxClouds"
                 heightGradient *= edgeWeight;
 
                 // Calculate base shape density
-                float4 shapeNoise = NoiseTex.SampleLevel(samplerNoiseTex, shapeSamplePos, mipLevel);
+                float4 shapeNoise = tex3Dlod(NoiseTex, float4(shapeSamplePos, mipLevel));
                 float4 normalizedShapeWeights = shapeNoiseWeights / dot(shapeNoiseWeights, 1);
                 float shapeFBM = dot(shapeNoise, normalizedShapeWeights) * heightGradient;
                 float baseShapeDensity = shapeFBM + densityOffset;
@@ -214,7 +155,7 @@ Shader "Nature/BoxClouds"
                 if (baseShapeDensity > 0) {
                     // Sample detail noise
                     float3 detailSamplePos = uvw*detailNoiseScale + detailOffset * offsetSpeed + float3(time*.4,-time,time*0.1)*detailSpeed;
-                    float4 detailNoise = DetailNoiseTex.SampleLevel(samplerDetailNoiseTex, detailSamplePos, mipLevel);
+                    float4 detailNoise = tex3Dlod(DetailNoiseTex,float4(detailSamplePos, 0));
                     float3 normalizedDetailWeights = detailWeights / dot(detailWeights, 1);
                     float detailFBM = dot(detailNoise, normalizedDetailWeights);
 
@@ -231,7 +172,7 @@ Shader "Nature/BoxClouds"
             float sampleDensity(float3 rayPos) {
 
                 // Calculate texture sample positions
-                float time = _Time.x * timeScale;
+                // float time = _Time.x * timeScale;
                 float3 size = boundsMax - boundsMin;
                 float3 boundsCentre = (boundsMin+boundsMax) * .5;
                 float3 shapeSamplePos = (rayPos * 0.001 + _WindDir *_Time.y) * scale;
@@ -254,7 +195,7 @@ Shader "Nature/BoxClouds"
                 // float heightGradient = edgeWeight * ((1-abs(heightPercent-0.5)));
 
                 // Calculate base shape density
-                float4 shapeNoise = NoiseTex.SampleLevel(samplerNoiseTex, shapeSamplePos, 0);
+                float4 shapeNoise = tex3Dlod(NoiseTex, float4(shapeSamplePos, 0));
                 float4 normalizedShapeWeights = shapeNoiseWeights / dot(shapeNoiseWeights, 1);
                 float shapeFBM = dot(shapeNoise, normalizedShapeWeights) * heightGradient;
                 float baseShapeDensity = shapeFBM + densityOffset;
@@ -264,7 +205,7 @@ Shader "Nature/BoxClouds"
                     // Sample detail noise
                     float3 detailSamplePos = rayPos*0.001 * detailNoiseScale + _WindDir * _Time.y * detailSpeed;
 
-                    float4 detailNoise = DetailNoiseTex.SampleLevel(samplerDetailNoiseTex, detailSamplePos, 0);
+                    float4 detailNoise = tex3Dlod(DetailNoiseTex,float4(detailSamplePos, 0));
                     float3 normalizedDetailWeights = detailWeights / dot(detailWeights, 1);
                     float detailFBM = dot(detailNoise, normalizedDetailWeights);
 
@@ -294,60 +235,19 @@ Shader "Nature/BoxClouds"
                 return darknessThreshold + transmittance * (1-darknessThreshold);
             }
 
-            float4 debugDrawNoise(float2 uv) {
-
-                float4 channels = 0;
-                float3 samplePos = float3(uv.x,uv.y, debugNoiseSliceDepth);
-
-                if (debugViewMode == 1) {
-                    channels = NoiseTex.SampleLevel(samplerNoiseTex, samplePos, 0);
-                }
-                else if (debugViewMode == 2) {
-                    channels = DetailNoiseTex.SampleLevel(samplerDetailNoiseTex, samplePos, 0);
-                }
-                else if (debugViewMode == 3) {
-                    channels = WeatherMap.SampleLevel(samplerWeatherMap, samplePos.xy, 0);
-                }
-
-                if (debugShowAllChannels) {
-                    return channels;
-                }
-                else {
-                    float4 maskedChannels = (channels*debugChannelWeight);
-                    if (debugGreyscale || debugChannelWeight.w == 1) {
-                        return dot(maskedChannels,1);
-                    }
-                    else {
-                        return maskedChannels;
-                    }
-                }
-            }
-
           
             float4 frag (v2f i) : SV_Target
             {
-                #if DEBUG_MODE == 1
-                if (debugViewMode != 0) {
-                    float width = _ScreenParams.x;
-                    float height =_ScreenParams.y;
-                    float minDim = min(width, height);
-                    float x = i.uv.x * width;
-                    float y = (1-i.uv.y) * height;
-
-                    if (x < minDim*viewerSize && y < minDim*viewerSize) {
-                        return debugDrawNoise(float2(x/(minDim*viewerSize)*debugTileAmount, y/(minDim*viewerSize)*debugTileAmount));
-                    }
-                }
-                #endif
-                
                 // Create ray
                 float3 rayPos = _WorldSpaceCameraPos;
+
                 float viewLength = length(i.viewVector);
                 float3 rayDir = i.viewVector / viewLength;
-                // return rayDir.xyzx;
+
                 // Depth and cloud container intersection info:
                 float nonlin_depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, i.uv);
                 float depth = LinearEyeDepth(nonlin_depth) * viewLength;
+                
                 float2 rayToContainerInfo = rayBoxDst(boundsMin, boundsMax, rayPos, 1/rayDir);
                 float dstToBox = rayToContainerInfo.x;
                 float dstInsideBox = rayToContainerInfo.y;
@@ -356,12 +256,12 @@ Shader "Nature/BoxClouds"
                 float3 entryPoint = rayPos + rayDir * dstToBox;
 
                 // random starting offset (makes low-res results noisy rather than jagged/glitchy, which is nicer)
-                float randomOffset = BlueNoise.SampleLevel(samplerBlueNoise, squareUV(i.uv*3), 0);
+                float randomOffset = tex2Dlod(BlueNoise, float4(squareUV(i.uv*3),0, 0));
                 randomOffset *= rayOffsetStrength;
                 
                 // Phase function makes clouds brighter around sun
                 float cosAngle = dot(rayDir, _WorldSpaceLightPos0.xyz);
-                float phaseVal = phase(cosAngle);
+                float phaseVal = phase(cosAngle,phaseParams);
 
                 float dstTravelled = randomOffset;
                 float dstLimit = min(depth-dstToBox, dstInsideBox);

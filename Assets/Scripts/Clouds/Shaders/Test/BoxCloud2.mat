@@ -7,8 +7,8 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Nature_BoxClouds
-  m_Shader: {fileID: 4800000, guid: fb0ac35111e398e4e8053b7fa873bac9, type: 3}
+  m_Name: TestRaymarch2
+  m_Shader: {fileID: 4800000, guid: c753929bbcdcf0141a0e24053f9ac0e2, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
