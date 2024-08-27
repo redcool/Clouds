@@ -1,8 +1,5 @@
 #if !defined(CLOUD_LIB_HLSL)
 #define CLOUD_LIB_HLSL
-float remap(float v, float minOld, float maxOld, float minNew, float maxNew) {
-    return minNew + (v-minOld) * (maxNew - minNew) / (maxOld-minOld);
-}
 
 float2 squareUV(float2 uv) {
     float width = _ScreenParams.x;
@@ -57,5 +54,8 @@ float beer(float d) {
 
 float remap01(float v, float low, float high) {
     return (v-low)/(high-low);
+}
+float remap(float v, float minOld, float maxOld, float minNew, float maxNew) {
+    return minNew + (v-minOld) * (maxNew - minNew) / (maxOld-minOld);
 }
 #endif //CLOUD_LIB_HLSL
