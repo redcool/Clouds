@@ -40,8 +40,8 @@ Material:
     - _DetailNoiseScale: 3
     - _DetailNoiseWeight: 1
     - _DetailSpeed: 1
-    - _LightAbsorptionThroughCloud: 0.75
-    - _LightAbsorptionTowardSun: 1.2
+    - _LightAbsorptionThroughCloud: 0.24
+    - _LightAbsorptionTowardSun: 1.81
     - _NumStepsLight: 8
     - _RayOffsetStrength: 10
     m_Colors:
