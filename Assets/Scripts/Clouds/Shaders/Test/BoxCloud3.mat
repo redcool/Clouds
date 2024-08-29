@@ -23,6 +23,10 @@ Material:
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
+    - _BlueNoise:
+        m_Texture: {fileID: 2800000, guid: 5bb92e256168a454aa369217d922e1b3, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _DetailNoiseTex:
         m_Texture: {fileID: 11700000, guid: 11ded9c9d808b4365b4b40a5198368be, type: 2}
         m_Scale: {x: 1, y: 1}
@@ -36,19 +40,20 @@ Material:
     - _CloudScale: 0.6
     - _DarknessThreshold: 0.15
     - _DensityMultiplier: 1
-    - _DensityOffset: -0.5
+    - _DensityOffset: 0.5
     - _DetailNoiseScale: 3
     - _DetailNoiseWeight: 1
     - _DetailSpeed: 1
-    - _LightAbsorptionThroughCloud: 0.24
-    - _LightAbsorptionTowardSun: 1.81
+    - _LightAbsorptionThroughCloud: 0.75
+    - _LightAbsorptionTowardSun: 1.2
     - _NumStepsLight: 8
     - _RayOffsetStrength: 10
     m_Colors:
-    - _BoundsMax: {r: 1000, g: 100, b: 1000, a: 0}
-    - _BoundsMin: {r: -1000, g: -100, b: -1000, a: 0}
+    - _BoundsFade: {r: 50, g: 50, b: 50, a: 0}
+    - _BoundsMax: {r: 1000, g: 961.6, b: 1000, a: 0}
+    - _BoundsMin: {r: -1000, g: 295, b: -1000, a: 0}
     - _DetailWeights: {r: 1, g: 1, b: 1, a: 1}
-    - _PhaseParams: {r: 0.8, g: 0.3, b: 1, a: 0.5}
+    - _PhaseParams: {r: 0.8, g: 0.33, b: 1, a: 0.48}
     - _ShapeNoiseWeights: {r: 1, g: 0.5, b: 0.2, a: 0}
     - _WindDir: {r: 0.1, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []

@@ -9,7 +9,7 @@ Shader "Nature/BoxClouds3"
         [Header(Noise)]
         _NoiseTex("_NoiseTex",3d)=""{}
 
-        _ShapeNoiseWeights("_ShapeNoiseWeights",vector)=(1,.5,.2,0)
+        _ShapeNoiseWeights("_ShapeNoiseWeights",vector)=(1,.48,.15,0)
         _DensityOffset("_DensityOffset",range(0,1)) = .5
         _DensityMultiplier("_DensityMultiplier",float) = 1
         _CloudScale("_CloudScale",float) = .6
@@ -19,17 +19,19 @@ Shader "Nature/BoxClouds3"
         _DetailNoiseScale("_DetailNoiseScale",float) = 3
         _DetailSpeed("_DetailSpeed",float) = 1
 
-        _DetailWeights("_DetailWeights",vector) = (1,1,1,1)
-        _DetailNoiseWeight("_DetailNoiseWeight",float) = 1
+        _DetailWeights("_DetailWeights",vector) = (1,.5,.5,0)
+        _DetailNoiseWeight("_DetailNoiseWeight",float) = 3.4
+
+        _BlueNoise("_BlueNoise",2d) = ""{}
 
         [Header(Base)]
         _WindDir("_WindDir",vector) = (0.1,0,0,0)
-        _BoundsMin("_BoundsMin",vector) = (-1000,-1000,-1000,0)
-        _BoundsMax("_BoundsMax",vector) = (1000,1000,1000,0)
+        _BoundsMin("_BoundsMin",vector) = (-1000,-100,-1000,0)
+        _BoundsMax("_BoundsMax",vector) = (1000,100,1000,0)
         _BoundsFade("_BoundsFade",vector) = (50,50,50,0)
 
         [Header(Lighting)]
-        _PhaseParams("_PhaseParams",vector) = (.8,.3,1,.5)
+        _PhaseParams("_PhaseParams",vector) = (.8,.33,1,.48)
 
         _NumStepsLight("_NumStepsLight",int) = 8
         _RayOffsetStrength("_RayOffsetStrength",float) = 10
@@ -177,15 +179,17 @@ Shader "Nature/BoxClouds3"
             }
 
             float sampleDensity(float3 rayPos) {
+                float3 size = _BoundsMax - _BoundsMin;
                 // float containerEdgeFadeDst = 50;
                 float3 dstEdge = min(_BoundsFade,min(rayPos - _BoundsMin,_BoundsMax - rayPos));
                 dstEdge /= _BoundsFade;
                 float edgeWeight = min(dstEdge.x,min(dstEdge.y,dstEdge.z));
 
-                // float3 curRate = (rayPos - _BoundsMin) / ( _BoundsMax -  _BoundsMin);
-                // float3 boundRate = _BoundsFade/ ( _BoundsMax -  _BoundsMin);
-                // float3 edgeAtten =(curRate>boundRate) &&(curRate < 1-boundRate);
-                // edgeWeight *= edgeAtten.x*edgeAtten.y*edgeAtten.z;
+                float heightPercent = (rayPos.y - _BoundsMin.y) / size.y;
+                float gMin = .2;
+                float gMax = .7;
+                float heightGradient = saturate(remap(heightPercent, 0.0, gMin, 0, 1)) * saturate(remap(heightPercent, 1, gMax, 0, 1));
+                heightGradient *= edgeWeight;
 
 
                 float3 pos = (rayPos * 0.001 + _WindDir * _Time.y )*_CloudScale;
@@ -197,11 +201,12 @@ Shader "Nature/BoxClouds3"
                 float3 detailPos = rayPos * 0.001 * _DetailNoiseScale + _WindDir * _Time.y * _DetailSpeed;
                 float4 detailNoiseTex = tex3Dlod(_DetailNoiseTex,detailPos.xyzx);
                 float detailShapeNoise = dot(detailNoiseTex,_DetailWeights/dot(_DetailWeights,1));
+
                 float cloudDensity = lerp(baseNoise , detailShapeNoise * _DetailNoiseWeight,0.1);
 
-                // float oneMinusShape = 1 - shapeNoise;
-                // float detailWeight = oneMinusShape * oneMinusShape * oneMinusShape;
-                //  cloudDensity = baseNoise  - (1-detailShapeNoise) * detailWeight * _DetailNoiseWeight;
+                float oneMinusShape = 1 - shapeNoise;
+                float detailWeight = oneMinusShape * oneMinusShape * oneMinusShape;
+                 cloudDensity = baseNoise  - (1-detailShapeNoise) * detailWeight * _DetailNoiseWeight;
 
                 return cloudDensity * _DensityMultiplier;
             }
@@ -222,25 +227,14 @@ Shader "Nature/BoxClouds3"
                 float transmittance = exp(-totalDensity * _LightAbsorptionTowardSun);
                 return lerp(transmittance,1,_DarknessThreshold);
             }
-            
-            float lightMarch(float3 pos){
-                float3 lightDir = _WorldSpaceLightPos0;
-                float dstInsideBox = rayBoxDst(_BoundsMin,_BoundsMax,pos,rcp(lightDir)).y;
-                float stepSize = dstInsideBox/_NumStepsLight;
-                float density = 0;
-                for(int i=0;i<_NumStepsLight;i++){
-                    pos += lightDir * stepSize;
-                    density += max(0, sampleDensity(pos))*stepSize;
-                }
-                float transmittance = exp(-density * _LightAbsorptionThroughCloud);
-                return lerp(transmittance,1,_DarknessThreshold);
-            }
 
             float4 frag(v2f i):SV_TARGET{
                 float2 screenUV = i.pos.xy / _ScreenParams.xy;
                 float3 rayPos = _WorldSpaceCameraPos;
+                float viewLength = length(i.viewVector);
+                float3 rayDir = i.viewVector / viewLength;
 
-                float3 rayDir = normalize(i.viewVector);
+                // float3 rayDir = normalize(i.viewVector);
                 float rawDepth = tex2D(_CameraDepthTexture,screenUV);
                 float depth = LinearEyeDepth(rawDepth);
 
@@ -265,9 +259,9 @@ Shader "Nature/BoxClouds3"
                     rayPos = entryPoint + rayDir * curDist;
                     float density = sampleDensity(rayPos);
                     if(density > 0){
-                        float lightTransmittance = lightMarch(rayPos);
+                        float lightTransmittance = lightmarch(rayPos);
                         lightEnergy += density * lightTransmittance * transmittance * stepSize * phaseVal;
-                        transmittance *= exp(-density * stepSize * _LightAbsorptionTowardSun);
+                        transmittance *= exp(-density * stepSize * _LightAbsorptionThroughCloud);
 
                         if(transmittance < 0.01)
                             break;
@@ -321,7 +315,7 @@ Shader "Nature/BoxClouds3"
                     float density = sampleDensity(rayPos);
                     
                     if (density > 0) {
-                        float lightTransmittance = lightMarch(rayPos);
+                        float lightTransmittance = lightmarch(rayPos);
                         lightEnergy += density * stepSize * transmittance * lightTransmittance * phaseVal;
                         transmittance *= exp(-density * stepSize * _LightAbsorptionThroughCloud);
                     
