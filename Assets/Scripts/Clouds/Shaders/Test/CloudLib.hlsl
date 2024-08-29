@@ -41,6 +41,13 @@ float hg(float a, float g) {
     return (1-g2) / (4*3.1415*pow(1+g2-2*g*(a), 1.5));
 }
 
+//https://cs.dartmouth.edu/~wjarosz/publications/dissertation/chapter4.pdf
+float Schlick(float a, float g)
+{
+    float k = 1.55*g-.55*g*g*g;
+    return (1.0 - k * k) / (4.0 * 3.1415 * pow(1.0 - k * cos(a), 2.0));
+}
+
 float phase(float a,float4 phaseParams) {
     float blend = .5;
     float hgBlend = hg(a,phaseParams.x) * (1-blend) + hg(a,-phaseParams.y) * blend;

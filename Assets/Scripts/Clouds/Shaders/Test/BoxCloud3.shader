@@ -31,6 +31,9 @@ Shader "Nature/BoxClouds3"
         _BoundsFade("_BoundsFade",vector) = (50,50,50,0)
 
         [Header(Lighting)]
+        /*
+        (forward scatter,backward scatter,base brightness,phase factor)
+        */
         _PhaseParams("_PhaseParams",vector) = (.8,.33,1,.48)
 
         _NumStepsLight("_NumStepsLight",int) = 8
@@ -39,7 +42,8 @@ Shader "Nature/BoxClouds3"
         _LightAbsorptionTowardSun("_LightAbsorptionTowardSun",float) = 1.2
         _LightAbsorptionThroughCloud("_LightAbsorptionThroughCloud",float) = 0.75
         _DarknessThreshold("_DarknessThreshold",float) = 0.15
-
+        _ColA("_ColA",color) = (1,1,1,1)
+        _ColB("_ColB",color) = (0,0,0.7,1)
     }
     SubShader
     {
@@ -126,6 +130,8 @@ Shader "Nature/BoxClouds3"
             float4 _LightColor0;
             float _DetailSpeed;
 
+            float3 _ColA,_ColB;
+
             //-----
             float3 _WindDir;
 
@@ -180,21 +186,30 @@ Shader "Nature/BoxClouds3"
 
             float sampleDensity(float3 rayPos) {
                 float3 size = _BoundsMax - _BoundsMin;
+                float3 boundsCentre = (_BoundsMax+_BoundsMin)*0.5;
                 // float containerEdgeFadeDst = 50;
                 float3 dstEdge = min(_BoundsFade,min(rayPos - _BoundsMin,_BoundsMax - rayPos));
                 dstEdge /= _BoundsFade;
                 float edgeWeight = min(dstEdge.x,min(dstEdge.y,dstEdge.z));
 
+                float2 weatherUV = (size.xz * .5 + (rayPos.xz-boundsCentre.xz)) / max(size.x,size.z);
+                float weatherMap = tex2Dlod(_WeatherMap, float4(weatherUV,0, 0)).x;
+
+
+                // height atten ?
                 float heightPercent = (rayPos.y - _BoundsMin.y) / size.y;
                 float gMin = .2;
                 float gMax = .7;
+                gMin = .4 * weatherMap.x;
+                gMax = .7 * weatherMap.x +gMin;
+
                 float heightGradient = saturate(remap(heightPercent, 0.0, gMin, 0, 1)) * saturate(remap(heightPercent, 1, gMax, 0, 1));
                 heightGradient *= edgeWeight;
 
 
                 float3 pos = (rayPos * 0.001 + _WindDir * _Time.y )*_CloudScale;
                 float4 noiseTex = tex3Dlod(_NoiseTex,float4(pos,pos.x));
-                float shapeNoise = dot(noiseTex,_ShapeNoiseWeights/dot(_ShapeNoiseWeights,1)) * edgeWeight;
+                float shapeNoise = dot(noiseTex,_ShapeNoiseWeights/dot(_ShapeNoiseWeights,1)) * heightGradient;
 
                 float baseNoise = shapeNoise - _DensityOffset;
                 // detail layer
@@ -270,7 +285,16 @@ Shader "Nature/BoxClouds3"
                     curDist += stepSize;
                 }
                 float3 cloudCol = lightEnergy * _LightColor0;
-                return float4(cloudCol,1 - transmittance);
+
+                float heightRate = (entryPoint - _BoundsMin)/(_BoundsMax - _BoundsMin).y;
+                float3 skyCol = lerp(_ColA,_ColB,saturate(1-lightEnergy));
+                // return skyCol.xyzx;
+                float fogRate = 1-exp(-dstInsideBox*0.001);
+                cloudCol = lerp(cloudCol,skyCol,fogRate);
+                
+                // use alpha blend
+                float alpha = saturate(0.8-transmittance);
+                return float4(cloudCol,alpha);
             }
           
             float4 frag1 (v2f i) : SV_Target
@@ -328,8 +352,10 @@ Shader "Nature/BoxClouds3"
                 }
 
                 float3 cloudCol = lightEnergy * _LightColor0;
+                
                 // use alpha blend
-                return float4(cloudCol,1-transmittance);
+                float alpha = saturate(0.8-transmittance);
+                return float4(cloudCol,alpha);
             }
 
             ENDCG

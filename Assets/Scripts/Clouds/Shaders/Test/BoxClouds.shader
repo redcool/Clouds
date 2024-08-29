@@ -132,14 +132,19 @@ Shader "Nature/BoxClouds"
                 float edgeWeight = min(dstEdge.x,min(dstEdge.y,dstEdge.z))/containerEdgeFadeDst;
                 
                 // Calculate height gradient from weather map
-                //float2 weatherUV = (size.xz * .5 + (rayPos.xz-boundsCentre.xz)) / max(size.x,size.z);
-                //float weatherMap = WeatherMap.SampleLevel(samplerWeatherMap, weatherUV, mipLevel).x;
+                float2 weatherUV = (size.xz * .5 + (rayPos.xz-boundsCentre.xz)) / max(size.x,size.z);
+                float weatherMap = tex2Dlod(WeatherMap,float4(weatherUV,0, 0));
 
                 float heightPercent = (rayPos.y - boundsMin.y) / size.y;
                 float gMin = .2;
                 float gMax = .7;
+                gMin = .4 * weatherMap.x;
+                gMax = .7 * weatherMap.x +gMin;
+                // gMin = remap(weatherMap.x,0,1,0.1,.5);
+                // gMax = remap(weatherMap.x,0,1,gMin,.9);
+
                 float heightGradient = saturate(remap(heightPercent, 0.0, gMin, 0, 1)) * saturate(remap(heightPercent, 1, gMax, 0, 1));
-                heightGradient *= edgeWeight;
+                heightGradient *= edgeWeight ;
 
                 // float heightGradient = edgeWeight * ((1-abs(heightPercent-0.5)));
 
@@ -184,7 +189,6 @@ Shader "Nature/BoxClouds"
                 return darknessThreshold + transmittance * (1-darknessThreshold);
             }
 
-          
             float4 frag (v2f i) : SV_Target
             {
                 float2 screenUV = i.pos.xy/_ScreenParams.xy;
@@ -220,10 +224,11 @@ Shader "Nature/BoxClouds"
                 // March through volume:
                 float transmittance = 1;
                 float3 lightEnergy = 0;
+                float density = 0;
 
                 while (dstTravelled < dstLimit) {
                     rayPos = entryPoint + rayDir * dstTravelled;
-                    float density = sampleDensity(rayPos);
+                    density = sampleDensity(rayPos);
                     
                     if (density > 0) {
                         float lightTransmittance = lightmarch(rayPos);
@@ -239,8 +244,16 @@ Shader "Nature/BoxClouds"
                 }
 
                 float3 cloudCol = lightEnergy * _LightColor0;
+
+                float heightRate = (entryPoint - boundsMin)/(boundsMax-boundsMin).y;
+                float3 skyCol = lerp(colA,colB,saturate(1-lightEnergy));
+                // return skyCol.xyzx;
+                float fogRate = 1-exp(-dstInsideBox*0.001);
+                cloudCol = lerp(cloudCol,skyCol,fogRate);
+                
                 // use alpha blend
-                return float4(cloudCol,1-transmittance);
+                float alpha = saturate(1-transmittance);
+                return float4(cloudCol,alpha);
             }
 
             ENDCG
